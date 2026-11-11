@@ -33,7 +33,7 @@ if search_query:
             
             # 5. Display Movies in a Grid
             for movie in movies[:5]:  # Show top 5 results
-                col1, col2 = st.column([1, 3])
+                col1, col2 = st.columns([1, 3])
                 
                 poster_path = movie.get("poster_path")
                 poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
