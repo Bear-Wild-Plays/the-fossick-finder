@@ -12,7 +12,7 @@ except Exception:
     st.stop()
 
 st.title("🎬 The Fossick Finder")
-st.write("Explore movies and TV series with advanced tone, keyword blurb search, and style filters!")
+st.write("Explore movies and TV series with advanced tone, blurb scanning, style filters, and the Cheesiness Meter!")
 
 # Genre Dictionaries for Movies and TV Shows
 MOVIE_GENRES = {
@@ -92,18 +92,16 @@ if st.sidebar.button("Discover", type="primary"):
     
     sort_by = vibe_data["sort"] if vibe_data else "popularity.desc"
     
-    # Build TMDB Discover URL
     url = f"https://api.themoviedb.org/3/discover/{endpoint}?api_key={api_key}&sort_by={sort_by}"
     
     if genre_id:
         url += f"&with_genres={genre_id}"
         
-    # Combine Vibe and Black & White keywords if present
     keyword_list = []
     if vibe_data and vibe_data["keyword"]:
         keyword_list.append(vibe_data["keyword"])
     if black_and_white:
-        keyword_list.append("10183") # TMDB keyword ID for black and white
+        keyword_list.append("10183")
         
     if keyword_list:
         url += f"&with_keywords={'|'.join(keyword_list)}"
@@ -118,7 +116,6 @@ if st.sidebar.button("Discover", type="primary"):
         data = response.json()
         items = data.get("results", [])
         
-        # Post-process items to scan blurbs if text was entered
         if blurb_keyword:
             keyword_lower = blurb_keyword.lower()
             items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
@@ -126,7 +123,6 @@ if st.sidebar.button("Discover", type="primary"):
         if items:
             st.success(f"Found {len(items)} {media_type.lower()} matching your criteria:")
             
-            # Display Results Grid (Top 10)
             for item in items[:10]:
                 col1, col2 = st.columns([1, 3])
                 
@@ -136,6 +132,17 @@ if st.sidebar.button("Discover", type="primary"):
                 title = item.get("title") or item.get("name", "Unknown Title")
                 date_key = "release_date" if endpoint == "movie" else "first_air_date"
                 date_val = item.get(date_key, 'N/A')
+                rating = item.get('vote_average', 5.0)
+                
+                # Custom Cheesiness Calculation Formula
+                # (Lower ratings combined with quirky camp keywords create high cheesiness scores)
+                cheesiness_score = max(1, min(10, int((10 - rating) * 1.2 + 2)))
+                if cheesiness_score >= 8:
+                    cheese_badge = "🧀 Super Cheesy / Cult Classic"
+                elif cheesiness_score >= 5:
+                    cheese_badge = "🍿 Mildly Cheesy / Fun Camp"
+                else:
+                    cheese_badge = "🎭 Serious / Prestigious"
                 
                 with col1:
                     if poster_url:
@@ -146,7 +153,7 @@ if st.sidebar.button("Discover", type="primary"):
                 with col2:
                     st.subheader(title)
                     st.write(f"**First Air / Release Date:** {date_val}")
-                    st.write(f"**Rating:** {item.get('vote_average', 'N/A')} / 10")
+                    st.write(f"**Rating:** {rating} / 10 | **Cheesiness:** {cheesiness_score}/10 ({cheese_badge})")
                     st.write(item.get("overview", "No description available."))
                 st.divider()
         else:
@@ -154,4 +161,4 @@ if st.sidebar.button("Discover", type="primary"):
     else:
         st.error("Failed to connect to TMDB API. Please check your connection or API key.")
 else:
-    st.info(f"👈 Use the sidebar to configure your filters, enter a blurb keyword, and click **Discover**!")
+    st.info(f"👈 Use the sidebar to configure your filters and click **Discover** to see the Cheesiness Meter in action!")
