@@ -12,10 +12,10 @@ except Exception:
     st.stop()
 
 st.title("🎬 The Fossick Finder")
-st.write("Explore and discover movies by genre, popularity, and preferences using TMDB Discover!")
+st.write("Explore movies and TV series using TMDB Discover!")
 
-# TMDB Genre ID Mapping Dictionary
-GENRES = {
+# Genre Dictionaries for Movies and TV Shows
+MOVIE_GENRES = {
     "All Genres": None,
     "Action": 28,
     "Adventure": 12,
@@ -37,42 +37,77 @@ GENRES = {
     "Western": 37
 }
 
-# 3. Sidebar Filters for Discover Mode
+TV_GENRES = {
+    "All Genres": None,
+    "Action & Adventure": 10759,
+    "Animation": 16,
+    "Comedy": 35,
+    "Crime": 80,
+    "Documentary": 99,
+    "Drama": 18,
+    "Family": 10751,
+    "Kids": 10762,
+    "Mystery": 9648,
+    "Reality": 10764,
+    "Sci-Fi & Fantasy": 10765,
+    "Soap": 10766,
+    "Talk": 10767,
+    "War & Politics": 10768,
+    "Western": 37
+}
+
+# 3. Sidebar Controls
 st.sidebar.header("🔍 Discover Filters")
-selected_genre_name = st.sidebar.selectbox("Select Genre", list(GENRES.keys()))
+media_type = st.sidebar.radio("Select Media Type", ["Movies", "TV Shows"])
+
+# Switch genres and endpoint based on media type selection
+if media_type == "Movies":
+    genre_dict = MOVIE_GENRES
+    endpoint = "movie"
+else:
+    genre_dict = TV_GENRES
+    endpoint = "tv"
+
+selected_genre_name = st.sidebar.selectbox("Select Genre", list(genre_dict.keys()))
 exclude_animation = st.sidebar.toggle("Exclude Cartoons / Animation", value=False)
 
 # 4. Discover Button Trigger
-if st.sidebar.button("Discover Movies", type="primary"):
-    genre_id = GENRES[selected_genre_name]
+if st.sidebar.button("Discover", type="primary"):
+    genre_id = genre_dict[selected_genre_name]
     
-    # Build TMDB Discover URL
-    url = f"https://api.themoviedb.org/3/discover/movie?api_key={api_key}&sort_by=popularity.desc"
+    # Build TMDB Discover URL for movies or tv
+    url = f"https://api.themoviedb.org/3/discover/{endpoint}?api_key={api_key}&sort_by=popularity.desc"
     
     # Add Genre filter if selected
     if genre_id:
         url += f"&with_genres={genre_id}"
         
-    # Add Animation exclusion if toggled (and user didn't explicitly select Animation)
+    # Add Animation exclusion if toggled
     if exclude_animation and genre_id != 16:
         url += "&without_genres=16"
         
-    with st.spinner("Discovering movies..."):
+    with st.spinner(f"Discovering popular {media_type.lower()}..."):
         response = requests.get(url)
         
     if response.status_code == 200:
         data = response.json()
-        movies = data.get("results", [])
+        items = data.get("results", [])
         
-        if movies:
-            st.success(f"Found {len(movies)} popular movies matching your filters:")
+        if items:
+            st.success(f"Found {len(items)} popular {media_type.lower()} matching your filters:")
             
-            # Display Movies in a Grid (Top 10 results)
-            for movie in movies[:10]:
+            # Display Results Grid (Top 10)
+            for item in items[:10]:
                 col1, col2 = st.columns([1, 3])
                 
-                poster_path = movie.get("poster_path")
+                poster_path = item.get("poster_path")
                 poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
+                
+                # TMDB uses 'title' for movies and 'name' for TV series
+                title = item.get("title") or item.get("name", "Unknown Title")
+                # TMDB uses 'release_date' for movies and 'first_air_date' for TV series
+                date_key = "release_date" if endpoint == "movie" else "first_air_date"
+                date_val = item.get(date_key, 'N/A')
                 
                 with col1:
                     if poster_url:
@@ -81,14 +116,14 @@ if st.sidebar.button("Discover Movies", type="primary"):
                         st.write("No poster available")
                         
                 with col2:
-                    st.subheader(movie.get("title", "Unknown Title"))
-                    st.write(f"**Release Date:** {movie.get('release_date', 'N/A')}")
-                    st.write(f"**Rating:** {movie.get('vote_average', 'N/A')} / 10")
-                    st.write(movie.get("overview", "No description available."))
+                    st.subheader(title)
+                    st.write(f"**First Air / Release Date:** {date_val}")
+                    st.write(f"**Rating:** {item.get('vote_average', 'N/A')} / 10")
+                    st.write(item.get("overview", "No description available."))
                 st.divider()
         else:
-            st.warning("No movies found matching those filters. Try adjusting your options!")
+            st.warning(f"No {media_type.lower()} found matching those filters. Try adjusting your options!")
     else:
         st.error("Failed to connect to TMDB API. Please check your connection or API key.")
 else:
-    st.info("👈 Use the sidebar filters on the left and click **Discover Movies** to start exploring!")
+    st.info(f"👈 Use the sidebar to choose between **Movies** or **TV Shows**, pick your filters, and click **Discover**!")
