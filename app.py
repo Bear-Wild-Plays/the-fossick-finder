@@ -4,15 +4,16 @@ import requests
 # 1. Page Configuration
 st.set_page_config(page_title="The Fossick Finder", page_icon="🎬", layout="wide")
 
-# 2. Load API Key from Secrets
+# 2. Load API Keys from Secrets
 try:
     api_key = st.secrets["tmdb_api_key"]
+    omdb_api_key = st.secrets["omdb_api_key"]
 except Exception:
-    st.error("TMDB API key not found in Streamlit Secrets. Please check your app settings.")
+    st.error("API keys not found in Streamlit Secrets. Please ensure both 'tmdb_api_key' and 'omdb_api_key' are added.")
     st.stop()
 
 st.title("🎬 The Fossick Finder")
-st.write("Explore movies and TV series with advanced tone, blurb scanning, style filters, and the Cheesiness Meter!")
+st.write("Explore movies and TV series with multi-database intelligence: TMDB discovery + OMDb ratings & reviews!")
 
 # Genre Dictionaries for Movies and TV Shows
 MOVIE_GENRES = {
@@ -109,7 +110,7 @@ if st.sidebar.button("Discover", type="primary"):
     if exclude_animation and genre_id != 16:
         url += "&without_genres=16"
         
-    with st.spinner(f"Discovering {media_type.lower()}..."):
+    with st.spinner(f"Discovering {media_type.lower()} across databases..."):
         response = requests.get(url)
         
     if response.status_code == 200:
@@ -132,11 +133,31 @@ if st.sidebar.button("Discover", type="primary"):
                 title = item.get("title") or item.get("name", "Unknown Title")
                 date_key = "release_date" if endpoint == "movie" else "first_air_date"
                 date_val = item.get(date_key, 'N/A')
-                rating = item.get('vote_average', 5.0)
+                release_year = date_val.split("-")[0] if date_val != 'N/A' else ""
+                tmdb_rating = item.get('vote_average', 5.0)
+                
+                # Fetch cross-database ratings from OMDb API
+                omdb_rating = "N/A"
+                rt_rating = "N/A"
+                metacritic = "N/A"
+                
+                try:
+                    omdb_url = f"http://www.omdbapi.com/?apikey={omdb_api_key}&t={requests.utils.quote(title)}"
+                    if release_year:
+                        omdb_url += f"&y={release_year}"
+                    omdb_res = requests.get(omdb_url).json()
+                    
+                    if omdb_res.get("Response") == "True":
+                        omdb_rating = omdb_res.get("imdbRating", "N/A")
+                        metacritic = omdb_res.get("Metascore", "N/A")
+                        for r in omdb_res.get("Ratings", []):
+                            if r.get("Source") == "Rotten Tomatoes":
+                                rt_rating = r.get("Value")
+                except Exception:
+                    pass  # Fallback gracefully if OMDb network call fails
                 
                 # Custom Cheesiness Calculation Formula
-                # (Lower ratings combined with quirky camp keywords create high cheesiness scores)
-                cheesiness_score = max(1, min(10, int((10 - rating) * 1.2 + 2)))
+                cheesiness_score = max(1, min(10, int((10 - tmdb_rating) * 1.2 + 2)))
                 if cheesiness_score >= 8:
                     cheese_badge = "🧀 Super Cheesy / Cult Classic"
                 elif cheesiness_score >= 5:
@@ -152,8 +173,9 @@ if st.sidebar.button("Discover", type="primary"):
                         
                 with col2:
                     st.subheader(title)
-                    st.write(f"**First Air / Release Date:** {date_val}")
-                    st.write(f"**Rating:** {rating} / 10 | **Cheesiness:** {cheesiness_score}/10 ({cheese_badge})")
+                    st.write(f"**Release / Air Date:** {date_val}")
+                    st.write(f"**Ratings:** TMDB: {tmdb_rating}/10 | IMDb: {omdb_rating} | Rotten Tomatoes: {rt_rating} | Metacritic: {metacritic}")
+                    st.write(f"**Cheesiness Meter:** {cheesiness_score}/10 ({cheese_badge})")
                     st.write(item.get("overview", "No description available."))
                 st.divider()
         else:
@@ -161,4 +183,4 @@ if st.sidebar.button("Discover", type="primary"):
     else:
         st.error("Failed to connect to TMDB API. Please check your connection or API key.")
 else:
-    st.info(f"👈 Use the sidebar to configure your filters and click **Discover** to see the Cheesiness Meter in action!")
+    st.info(f"👈 Use the sidebar to configure your multi-database filters and click **Discover**!")
