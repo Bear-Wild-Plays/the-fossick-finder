@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import json
 from google import genai
+from prompts.prospector_prompts import build_curation_prompt, PROMPT_VERSION
 
 # 1. Page Configuration
 st.set_page_config(page_title="The Fossick Finder", page_icon="⛏️", layout="wide")
@@ -244,20 +245,11 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
         if user_mood and items:
             with st.spinner("🤖 Gemini AI Prospector is evaluating and panning for notes..."):
                 try:
-                    movies_snippet = "\n".join([f"- ID: {i.get('id')} | Title: {i.get('title') or i.get('name')} | Overview: {i.get('overview')}" for i in items[:15]])
-                    prompt = f"""
-                    You are an expert film prospector in an 1849 gold rush style. A user is looking for media matching this specific mood or request: "{user_mood}".
-                    Here is a list of candidate titles discovered from the database:
-                    {movies_snippet}
-                    
-                    Select up to 6 titles from this list that best match the user's request. For each selected title, write a short, punchy "Prospector's Note" (1 sentence, in a fun prospecting/gold-mining western persona) explaining why it's a great match.
-                    
-                    Return ONLY valid JSON in this exact format, with no markdown code blocks or backticks:
-                    [
-                      {{"id": 12345, "note": "Note text here..."}},
-                      {{"id": 67890, "note": "Note text here..."}}
-                    ]
-                    """
+                    movies_snippet = "\n".join([
+                        f"- ID: {i.get('id')} | Title: {i.get('title') or i.get('name')} | Overview: {i.get('overview')}"
+                        for i in items[:15]
+                    ])
+                    prompt = build_curation_prompt(user_mood, movies_snippet)
                     ai_res = gemini_client.models.generate_content(
                         model='gemini-2.5-flash',
                         contents=prompt
@@ -354,3 +346,5 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
         st.error("💥 Cave-in! Failed to connect to TMDB API. Please check your connection or API key.")
 else:
     st.info("👈 Grab your **Prospecting Tools** on the left, choose your decade, type what you're craving, and click **⛏️ Dig for Gems!**")
+
+st.sidebar.caption(f"Prompt Engine: `{PROMPT_VERSION}`")
