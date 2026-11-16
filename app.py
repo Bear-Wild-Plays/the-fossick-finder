@@ -2,7 +2,78 @@ import streamlit as st
 import requests
 
 # 1. Page Configuration
-st.set_page_config(page_title="The Fossick Finder", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="The Fossick Finder", page_icon="⛏️", layout="wide")
+
+# Custom CSS for Western Gold Rush Theme & Monument Valley Banner
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Rye&display=swap');
+    
+    /* Main background - Deep Rich Soil */
+    .stApp {
+        background-color: #1C1713;
+        color: #F4EFE6;
+    }
+    
+    /* Sidebar background - Dark Earth / Sandstone */
+    [data-testid="stSidebar"] {
+        background-color: #29221C;
+        border-right: 2px solid #5C4938;
+    }
+    
+    /* Western Font for Titles & Headers */
+    h1, h2, h3 {
+        font-family: 'Rye', serif !important;
+        color: #E5B84B !important;
+    }
+    
+    /* Monument Valley Banner Container */
+    .banner-container {
+        background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&w=1600&q=80');
+        background-size: cover;
+        background-position: center;
+        border-radius: 12px;
+        padding: 45px 25px;
+        text-align: center;
+        margin-bottom: 25px;
+        border: 2px solid #6E5641;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+    }
+    
+    /* Primary Action Button - Gold Nugget Style */
+    div.stButton > button[kind="primary"] {
+        background-color: #D4AF37;
+        color: #1C1713;
+        font-weight: bold;
+        border: 2px solid #F3E5AB;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        transition: all 0.2s ease;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #F3E5AB;
+        color: #1C1713;
+        border-color: #D4AF37;
+        transform: scale(1.02);
+    }
+    
+    /* Movie Result Card Styling - Excavated Stone & Gem Border */
+    .gem-card {
+        background-color: #261F1A;
+        border: 1px solid #6E5641;
+        border-left: 5px solid #38BDF8;
+        border-radius: 10px;
+        padding: 18px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+    
+    /* Dividers - Earthy Copper/Bronze */
+    hr {
+        border-color: #5C4938;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # 2. Load API Keys from Secrets
 try:
@@ -12,8 +83,15 @@ except Exception:
     st.error("API keys not found in Streamlit Secrets. Please ensure both 'tmdb_api_key' and 'omdb_api_key' are added.")
     st.stop()
 
-st.title("🎬 The Fossick Finder")
-st.write("Explore movies and TV series with multi-database intelligence: TMDB discovery + OMDb ratings & reviews!")
+# Custom Banner Section with New Text
+st.markdown("""
+<div class="banner-container">
+    <h1 style="color: #F4EFE6; margin-bottom: 15px; text-shadow: 3px 3px 6px rgba(0,0,0,0.9); font-family: 'Rye', serif;">The Fossick Finder</h1>
+    <p style="color: #FDF6E2; font-size: 1.25rem; font-family: 'Georgia', serif; font-style: italic; max-width: 850px; margin: 0 auto; text-shadow: 2px 2px 4px rgba(0,0,0,0.9);">
+        Instead of scrolling to find the latest release, get your hands dirty and dig through cinema and television history to find a gem that is right for tonight.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # Genre Dictionaries for Movies and TV Shows
 MOVIE_GENRES = {
@@ -67,9 +145,9 @@ VIBES = {
     "Action-Packed / High Energy": {"keyword": "9715", "sort": "popularity.desc"}
 }
 
-# 3. Sidebar Controls
-st.sidebar.header("🔍 Discover Filters")
-media_type = st.sidebar.radio("Select Media Type", ["Movies", "TV Shows"])
+# 3. Sidebar Controls (The Prospector's Toolkit)
+st.sidebar.header("⛏️ Prospecting Tools")
+media_type = st.sidebar.radio("Where are we digging?", ["Movies", "TV Shows"])
 
 if media_type == "Movies":
     genre_dict = MOVIE_GENRES
@@ -78,16 +156,16 @@ else:
     genre_dict = TV_GENRES
     endpoint = "tv"
 
-selected_genre_name = st.sidebar.selectbox("Select Genre", list(genre_dict.keys()))
-selected_vibe_name = st.sidebar.selectbox("Select Tone / Vibe", list(VIBES.keys()))
+selected_genre_name = st.sidebar.selectbox("Choose Your Vein (Genre)", list(genre_dict.keys()))
+selected_vibe_name = st.sidebar.selectbox("Select Atmosphere / Tone", list(VIBES.keys()))
 
-st.sidebar.subheader("✨ Advanced Filters")
-exclude_animation = st.sidebar.toggle("Exclude Cartoons / Animation", value=False)
-black_and_white = st.sidebar.toggle("Black & White Only", value=False)
-blurb_keyword = st.sidebar.text_input("Search inside blurb / overview", "", placeholder="e.g. space, island, NYC")
+st.sidebar.subheader("Prospecting Pans")
+exclude_animation = st.sidebar.toggle("Filter out Cartoons / Animation", value=False)
+black_and_white = st.sidebar.toggle("Classic Black & White Only", value=False)
+blurb_keyword = st.sidebar.text_input("Sift plot blurbs for a word", "", placeholder="e.g. gold, space, island")
 
 # 4. Discover Button Trigger
-if st.sidebar.button("Discover", type="primary"):
+if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
     genre_id = genre_dict[selected_genre_name]
     vibe_data = VIBES[selected_vibe_name]
     
@@ -110,7 +188,7 @@ if st.sidebar.button("Discover", type="primary"):
     if exclude_animation and genre_id != 16:
         url += "&without_genres=16"
         
-    with st.spinner(f"Discovering {media_type.lower()} across databases..."):
+    with st.spinner(f"⛏️ Digging through the dirt and gravel for {media_type.lower()}..."):
         response = requests.get(url)
         
     if response.status_code == 200:
@@ -122,9 +200,10 @@ if st.sidebar.button("Discover", type="primary"):
             items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
         
         if items:
-            st.success(f"Found {len(items)} {media_type.lower()} matching your criteria:")
+            st.success(f"💎 Strike! Unearthed {len(items)} {media_type.lower()} from the quarry:")
             
             for item in items[:10]:
+                st.markdown('<div class="gem-card">', unsafe_allow_html=True)
                 col1, col2 = st.columns([1, 3])
                 
                 poster_path = item.get("poster_path")
@@ -154,33 +233,34 @@ if st.sidebar.button("Discover", type="primary"):
                             if r.get("Source") == "Rotten Tomatoes":
                                 rt_rating = r.get("Value")
                 except Exception:
-                    pass  # Fallback gracefully if OMDb network call fails
+                    pass
                 
                 # Custom Cheesiness Calculation Formula
                 cheesiness_score = max(1, min(10, int((10 - tmdb_rating) * 1.2 + 2)))
                 if cheesiness_score >= 8:
-                    cheese_badge = "🧀 Super Cheesy / Cult Classic"
+                    cheese_badge = "🧀 Fool's Gold / Super Cheesy Cult Classic"
                 elif cheesiness_score >= 5:
-                    cheese_badge = "🍿 Mildly Cheesy / Fun Camp"
+                    cheese_badge = "🍿 Rough Cut / Mildly Cheesy Fun"
                 else:
-                    cheese_badge = "🎭 Serious / Prestigious"
+                    cheese_badge = "💎 Flawless Cut / Prestigious"
                 
                 with col1:
                     if poster_url:
                         st.image(poster_url, width=150)
                     else:
-                        st.write("No poster available")
+                        st.write("🪨 No poster unearthed")
                         
                 with col2:
-                    st.subheader(title)
-                    st.write(f"**Release / Air Date:** {date_val}")
-                    st.write(f"**Ratings:** TMDB: {tmdb_rating}/10 | IMDb: {omdb_rating} | Rotten Tomatoes: {rt_rating} | Metacritic: {metacritic}")
-                    st.write(f"**Cheesiness Meter:** {cheesiness_score}/10 ({cheese_badge})")
-                    st.write(item.get("overview", "No description available."))
-                st.divider()
+                    st.subheader(f"💎 {title}")
+                    st.write(f"**Unearthed (Release / Air Date):** {date_val}")
+                    st.write(f"**Appraisal:** TMDB: `{tmdb_rating}/10` | IMDb: `{omdb_rating}` | Rotten Tomatoes: `{rt_rating}` | Metacritic: `{metacritic}`")
+                    st.write(f"**Purity & Cheese:** `{cheesiness_score}/10` — {cheese_badge}")
+                    st.write(item.get("overview", "No plot inscription found."))
+                
+                st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.warning(f"No {media_type.lower()} found matching those filters and blurb search keyword. Try broadening your terms!")
+            st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those exact filters. Try digging in a broader vein!")
     else:
-        st.error("Failed to connect to TMDB API. Please check your connection or API key.")
+        st.error("💥 Cave-in! Failed to connect to TMDB API. Please check your connection or API key.")
 else:
-    st.info(f"👈 Use the sidebar to configure your multi-database filters and click **Discover**!")
+    st.info("👈 Grab your **Prospecting Tools** on the left, set your filters, and click **⛏️ Dig for Gems!** to start mining.")
