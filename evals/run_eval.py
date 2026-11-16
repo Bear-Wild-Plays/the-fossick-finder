@@ -49,7 +49,7 @@ def evaluate_golden_set():
         valid_candidate_ids = {c["id"] for c in case["candidates"]}
 
         prompt = build_curation_prompt(case["user_mood"], candidates_str)
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
 
         raw_text = (
             response.text.strip()
