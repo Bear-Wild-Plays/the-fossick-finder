@@ -4,7 +4,7 @@ import requests
 # 1. Page Configuration
 st.set_page_config(page_title="The Fossick Finder", page_icon="⛏️", layout="wide")
 
-# Custom CSS for Western Gold Rush Theme & Monument Valley Banner
+# Custom CSS for Western Gold Rush Theme, Desert Banner, & High-Contrast Sidebar
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Rye&display=swap');
@@ -15,10 +15,16 @@ st.markdown("""
         color: #F4EFE6;
     }
     
-    /* Sidebar background - Dark Earth / Sandstone */
+    /* Sidebar background - Warm Prospector Parchment */
     [data-testid="stSidebar"] {
-        background-color: #29221C;
+        background-color: #E2C9A8 !important;
         border-right: 2px solid #5C4938;
+    }
+    
+    /* Force high-contrast dark text on the sidebar so toggles and labels are fully readable */
+    [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p, [data-testid="stSidebar"] div {
+        color: #1C1713 !important;
+        font-weight: 600;
     }
     
     /* Western Font for Titles & Headers */
@@ -27,16 +33,14 @@ st.markdown("""
         color: #E5B84B !important;
     }
     
-    /* Monument Valley Banner Container */
+    /* Monument Valley / Desert Sunset Banner Container */
     .banner-container {
-        background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&w=1600&q=80');
-        background-size: cover;
-        background-position: center;
+        background: linear-gradient(135deg, #C85A32 0%, #9E3D26 45%, #5E1914 100%);
         border-radius: 12px;
         padding: 45px 25px;
         text-align: center;
         margin-bottom: 25px;
-        border: 2px solid #6E5641;
+        border: 2px solid #E5B84B;
         box-shadow: 0 8px 20px rgba(0,0,0,0.6);
     }
     
@@ -83,11 +87,11 @@ except Exception:
     st.error("API keys not found in Streamlit Secrets. Please ensure both 'tmdb_api_key' and 'omdb_api_key' are added.")
     st.stop()
 
-# Custom Banner Section with New Text
+# Custom Banner Section with Monument Valley Theme & Updated Text
 st.markdown("""
 <div class="banner-container">
     <h1 style="color: #F4EFE6; margin-bottom: 15px; text-shadow: 3px 3px 6px rgba(0,0,0,0.9); font-family: 'Rye', serif;">The Fossick Finder</h1>
-    <p style="color: #FDF6E2; font-size: 1.25rem; font-family: 'Georgia', serif; font-style: italic; max-width: 850px; margin: 0 auto; text-shadow: 2px 2px 4px rgba(0,0,0,0.9);">
+    <p style="color: #FDF6E2; font-size: 1.2rem; font-family: 'Georgia', serif; font-style: italic; max-width: 850px; margin: 0 auto; text-shadow: 2px 2px 4px rgba(0,0,0,0.9);">
         Instead of scrolling to find the latest release, get your hands dirty and dig through cinema and television history to find a gem that is right for tonight.
     </p>
 </div>
