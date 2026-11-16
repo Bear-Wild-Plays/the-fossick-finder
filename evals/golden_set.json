@@ -1,0 +1,64 @@
+[
+  {
+    "test_id": "TC-001",
+    "category": "Subtext & Tone Nuance",
+    "user_mood": "A cozy 90s mystery that isn't too dark or gory",
+    "candidates": [
+      {"id": 101, "title": "Se7en", "overview": "Two detectives hunt a serial killer who uses the seven deadly sins as his motives in a bleak, rain-soaked city."},
+      {"id": 102, "title": "Manhattan Murder Mystery", "overview": "A middle-aged couple suspects their neighbor murdered his wife and embarks on a witty, neurotic amateur investigation in New York."},
+      {"id": 103, "title": "The Silence of the Lambs", "overview": "A young FBI cadet must confide in an incarcerated and manipulative cannibal killer to catch another serial killer."}
+    ],
+    "expected_ids": [102],
+    "forbidden_ids": [101, 103],
+    "rubric_focus": "Must reject bleak/violent thrillers despite matching the 'mystery/detective' keyword."
+  },
+  {
+    "test_id": "TC-002",
+    "category": "Negative Constraint Handling",
+    "user_mood": "80s sci-fi adventure, nothing depressing or post-apocalyptic",
+    "candidates": [
+      {"id": 201, "title": "The Road Warrior", "overview": "In a brutal post-apocalyptic wasteland, a drifter agrees to help a small community defend their gasoline supply."},
+      {"id": 202, "title": "Innerspace", "overview": "A test pilot is miniaturized in a secret experiment and accidentally injected into a hypochondriac store clerk."},
+      {"id": 203, "title": "Threads", "overview": "The devastating effects of nuclear holocaust on a working-class British city."}
+    ],
+    "expected_ids": [202],
+    "forbidden_ids": [201, 203],
+    "rubric_focus": "Must strictly honor the negative constraint ('nothing depressing or post-apocalyptic')."
+  },
+  {
+    "test_id": "TC-003",
+    "category": "Low-Signal / Vibe Query",
+    "user_mood": "Something quiet and atmospheric for a rainy Tuesday",
+    "candidates": [
+      {"id": 301, "title": "The Station Agent", "overview": "When his only friend dies, a man born with dwarfism moves to rural New Jersey to live a life of solitude, only to meet a chatty hot dog vendor."},
+      {"id": 302, "title": "Fast & Furious 9", "overview": "Dom and the crew must confront an international terrorist who happens to be Dom's estranged brother."}
+    ],
+    "expected_ids": [301],
+    "forbidden_ids": [302],
+    "rubric_focus": "Must favor quiet, character-driven pacing over high-octane blockbuster action."
+  },
+  {
+    "test_id": "TC-004",
+    "category": "Grounding / Anti-Hallucination Stress Test",
+    "user_mood": "A classic 1970s space opera with laser swords",
+    "candidates": [
+      {"id": 401, "title": "Silent Running", "overview": "In a future where all flora is extinct on Earth, an astronaut is given orders to destroy the last of Earth's botany, kept in a greenhouse aboard a spacecraft."},
+      {"id": 402, "title": "Dark Star", "overview": "In the far reaches of space, a small crew, 20 years into their solitary mission, find things beginning to go hilariously wrong."}
+    ],
+    "expected_ids": [401, 402],
+    "forbidden_ids": [],
+    "rubric_focus": "Must ONLY return IDs from the provided pool and must NOT hallucinate Star Wars (1977) since it is absent from candidates."
+  },
+  {
+    "test_id": "TC-005",
+    "category": "Era & Pacing Alignment",
+    "user_mood": "A sharp, witty 80s workplace comedy without slapstick",
+    "candidates": [
+      {"id": 501, "title": "Broadcast News", "overview": "Take two rival television reporters: one handsome, one talented, both male. Add one Producer, female. Mix well, and watch the sparks fly."},
+      {"id": 502, "title": "Police Academy", "overview": "A group of good-hearted, but incompetent misfits enter the police academy, but the instructors there are not going to put up with their pranks."}
+    ],
+    "expected_ids": [501],
+    "forbidden_ids": [502],
+    "rubric_focus": "Must distinguish sharp dialogue-driven comedy from broad slapstick."
+  }
+]

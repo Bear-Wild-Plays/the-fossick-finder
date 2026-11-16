@@ -251,7 +251,7 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                     ])
                     prompt = build_curation_prompt(user_mood, movies_snippet)
                     ai_res = gemini_client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.8-flash',
                         contents=prompt
                     )
                     raw_text = ai_res.text.strip()
@@ -347,4 +347,8 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
 else:
     st.info("👈 Grab your **Prospecting Tools** on the left, choose your decade, type what you're craving, and click **⛏️ Dig for Gems!**")
 
+<<<<<<< HEAD
 st.sidebar.caption(f"Prompt Engine: `{PROMPT_VERSION}`")
+=======
+st.sidebar.caption(f"Prompt Engine: `{PROMPT_VERSION}`")
+>>>>>>> 01fa15e55195e3bfb80ed6ad6a2e0f7bac028f5b
