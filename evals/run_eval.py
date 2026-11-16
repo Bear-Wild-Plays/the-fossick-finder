@@ -27,7 +27,7 @@ def judge_editorial_voice(user_mood: str, note: str) -> bool:
 
     Respond with ONLY "PASS" or "FAIL".
     """
-    res = client.models.generate_content(model="gemini-2.5-flash", contents=judge_prompt)
+    res = client.models.generate_content(model="gemini-3.8-flash", contents=judge_prompt)
     return "PASS" in res.text.strip().upper()
 
 
@@ -49,7 +49,7 @@ def evaluate_golden_set():
         valid_candidate_ids = {c["id"] for c in case["candidates"]}
 
         prompt = build_curation_prompt(case["user_mood"], candidates_str)
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
 
         raw_text = (
             response.text.strip()
