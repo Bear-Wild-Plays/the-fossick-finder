@@ -4,14 +4,18 @@ import requests
 # 1. Page Configuration
 st.set_page_config(page_title="The Fossick Finder", page_icon="⛏️", layout="wide")
 
-# Custom CSS for Western Gold Rush Theme, Desert Banner, & High-Contrast Sidebar
+# Custom CSS for Western Gold Rush Theme, Desert Canyon Banner, & Earthy Soil Background
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Rye&display=swap');
     
-    /* Main background - Deep Rich Soil */
+    /* Main background - Dark Earthy Soil Texture with rich soil overlay */
     .stApp {
-        background-color: #1C1713;
+        background: linear-gradient(rgba(28, 23, 19, 0.88), rgba(28, 23, 19, 0.95)), 
+                    url('https://images.unsplash.com/photo-1558441719-74d120a1f9a0?auto=format&fit=crop&w=1600&q=80');
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
         color: #F4EFE6;
     }
     
@@ -33,15 +37,18 @@ st.markdown("""
         color: #E5B84B !important;
     }
     
-    /* Monument Valley / Desert Sunset Banner Container */
+    /* Monument Valley Desert Canyon Banner Container */
     .banner-container {
-        background: linear-gradient(135deg, #C85A32 0%, #9E3D26 45%, #5E1914 100%);
+        background-image: linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.55)), 
+                          url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1600&q=80');
+        background-size: cover;
+        background-position: center;
         border-radius: 12px;
         padding: 45px 25px;
         text-align: center;
         margin-bottom: 25px;
         border: 2px solid #E5B84B;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.7);
     }
     
     /* Primary Action Button - Gold Nugget Style */
@@ -69,7 +76,7 @@ st.markdown("""
         border-radius: 10px;
         padding: 18px;
         margin-bottom: 15px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
     }
     
     /* Dividers - Earthy Copper/Bronze */
@@ -87,7 +94,7 @@ except Exception:
     st.error("API keys not found in Streamlit Secrets. Please ensure both 'tmdb_api_key' and 'omdb_api_key' are added.")
     st.stop()
 
-# Custom Banner Section with Monument Valley Theme & Updated Text
+# Custom Banner Section with Desert Canyon Theme & Narrative Text
 st.markdown("""
 <div class="banner-container">
     <h1 style="color: #F4EFE6; margin-bottom: 15px; text-shadow: 3px 3px 6px rgba(0,0,0,0.9); font-family: 'Rye', serif;">The Fossick Finder</h1>
