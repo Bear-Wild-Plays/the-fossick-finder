@@ -1,5 +1,7 @@
 import streamlit as st
 import requests
+import json
+from google import genai
 
 # 1. Page Configuration
 st.set_page_config(page_title="The Fossick Finder", page_icon="⛏️", layout="wide")
@@ -86,12 +88,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 2. Load API Keys from Secrets
+# 2. Load API Keys from Secrets & Initialize Gemini Client
 try:
     api_key = st.secrets["tmdb_api_key"]
     omdb_api_key = st.secrets["omdb_api_key"]
+    gemini_api_key = st.secrets["gemini_api_key"]
+    gemini_client = genai.Client(api_key=gemini_api_key)
 except Exception:
-    st.error("API keys not found in Streamlit Secrets. Please ensure both 'tmdb_api_key' and 'omdb_api_key' are added.")
+    st.error("API keys not found in Streamlit Secrets. Please ensure 'tmdb_api_key', 'omdb_api_key', and 'gemini_api_key' are added.")
     st.stop()
 
 # Custom Banner Section with Desert Canyon Theme & Narrative Text
@@ -156,6 +160,18 @@ VIBES = {
     "Action-Packed / High Energy": {"keyword": "9715", "sort": "popularity.desc"}
 }
 
+# Decade / Era Options (Prioritizing 1980s, 1990s, 1970s as requested)
+DECADES = {
+    "Any Decade / Era": None,
+    "1980s": ("1980-01-01", "1989-12-31"),
+    "1990s": ("1990-01-01", "1999-12-31"),
+    "1970s": ("1970-01-01", "1979-12-31"),
+    "2000s": ("2000-01-01", "2009-12-31"),
+    "2010s": ("2010-01-01", "2019-12-31"),
+    "2020s": ("2020-01-01", "2029-12-31"),
+    "1960s and Earlier": ("1900-01-01", "1969-12-31")
+}
+
 # 3. Sidebar Controls (The Prospector's Toolkit)
 st.sidebar.header("⛏️ Prospecting Tools")
 media_type = st.sidebar.radio("Where are we digging?", ["Movies", "TV Shows"])
@@ -168,7 +184,11 @@ else:
     endpoint = "tv"
 
 selected_genre_name = st.sidebar.selectbox("Choose Your Vein (Genre)", list(genre_dict.keys()))
+selected_decade_name = st.sidebar.selectbox("Era / Decade Focus", list(DECADES.keys()))
 selected_vibe_name = st.sidebar.selectbox("Select Atmosphere / Tone", list(VIBES.keys()))
+
+st.sidebar.subheader("✨ AI Semantic Layer")
+user_mood = st.sidebar.text_area("What are you in the mood for?", placeholder="e.g. A smart sci-fi with a mind-bending plot twist or a feel-good road trip movie")
 
 st.sidebar.subheader("Prospecting Pans")
 exclude_animation = st.sidebar.toggle("Filter out Cartoons / Animation", value=False)
@@ -179,6 +199,7 @@ blurb_keyword = st.sidebar.text_input("Sift plot blurbs for a word", "", placeho
 if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
     genre_id = genre_dict[selected_genre_name]
     vibe_data = VIBES[selected_vibe_name]
+    decade_range = DECADES[selected_decade_name]
     
     sort_by = vibe_data["sort"] if vibe_data else "popularity.desc"
     
@@ -186,6 +207,14 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
     
     if genre_id:
         url += f"&with_genres={genre_id}"
+        
+    # Apply Decade / Date Range Filter
+    if decade_range:
+        start_date, end_date = decade_range
+        if endpoint == "movie":
+            url += f"&primary_release_date.gte={start_date}&primary_release_date.lte={end_date}"
+        else:
+            url += f"&first_air_date.gte={start_date}&first_air_date.lte={end_date}"
         
     keyword_list = []
     if vibe_data and vibe_data["keyword"]:
@@ -209,7 +238,51 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
         if blurb_keyword:
             keyword_lower = blurb_keyword.lower()
             items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
-        
+            
+        # Use Gemini Semantic Layer & Generate Prospector's Notes if user entered a mood
+        prospector_notes = {}
+        if user_mood and items:
+            with st.spinner("🤖 Gemini AI Prospector is evaluating and panning for notes..."):
+                try:
+                    movies_snippet = "\n".join([f"- ID: {i.get('id')} | Title: {i.get('title') or i.get('name')} | Overview: {i.get('overview')}" for i in items[:15]])
+                    prompt = f"""
+                    You are an expert film prospector in an 1849 gold rush style. A user is looking for media matching this specific mood or request: "{user_mood}".
+                    Here is a list of candidate titles discovered from the database:
+                    {movies_snippet}
+                    
+                    Select up to 6 titles from this list that best match the user's request. For each selected title, write a short, punchy "Prospector's Note" (1 sentence, in a fun prospecting/gold-mining western persona) explaining why it's a great match.
+                    
+                    Return ONLY valid JSON in this exact format, with no markdown code blocks or backticks:
+                    [
+                      {{"id": 12345, "note": "Note text here..."}},
+                      {{"id": 67890, "note": "Note text here..."}}
+                    ]
+                    """
+                    ai_res = gemini_client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt
+                    )
+                    raw_text = ai_res.text.strip()
+                    if raw_text.startswith("```"):
+                        raw_text = raw_text.split("```")[1]
+                        if raw_text.startswith("json"):
+                            raw_text = raw_text[4:].strip()
+                            
+                    parsed_data = json.loads(raw_text)
+                    valid_ids = []
+                    for entry in parsed_data:
+                        item_id = entry.get("id")
+                        note_text = entry.get("note")
+                        if item_id and note_text:
+                            valid_ids.append(item_id)
+                            prospector_notes[item_id] = note_text
+                            
+                    curated_items = [item for vid in valid_ids for item in items if item.get('id') == vid]
+                    if curated_items:
+                        items = curated_items
+                except Exception:
+                    pass
+
         if items:
             st.success(f"💎 Strike! Unearthed {len(items)} {media_type.lower()} from the quarry:")
             
@@ -266,12 +339,18 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                     st.write(f"**Unearthed (Release / Air Date):** {date_val}")
                     st.write(f"**Appraisal:** TMDB: `{tmdb_rating}/10` | IMDb: `{omdb_rating}` | Rotten Tomatoes: `{rt_rating}` | Metacritic: `{metacritic}`")
                     st.write(f"**Purity & Cheese:** `{cheesiness_score}/10` — {cheese_badge}")
+                    
+                    # Display Gemini Prospector's Note if available
+                    note = prospector_notes.get(item.get('id'))
+                    if note:
+                        st.markdown(f"**⛏️ Prospector's Note:** *\"{note}\"*")
+                        
                     st.write(item.get("overview", "No plot inscription found."))
                 
                 st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those exact filters. Try digging in a broader vein!")
+            st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those exact filters, decade, and mood. Try loosening your pickaxe!")
     else:
         st.error("💥 Cave-in! Failed to connect to TMDB API. Please check your connection or API key.")
 else:
-    st.info("👈 Grab your **Prospecting Tools** on the left, set your filters, and click **⛏️ Dig for Gems!** to start mining.")
+    st.info("👈 Grab your **Prospecting Tools** on the left, choose your decade, type what you're craving, and click **⛏️ Dig for Gems!**")
