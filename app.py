@@ -347,8 +347,4 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
 else:
     st.info("👈 Grab your **Prospecting Tools** on the left, choose your decade, type what you're craving, and click **⛏️ Dig for Gems!**")
 
-<<<<<<< HEAD
 st.sidebar.caption(f"Prompt Engine: `{PROMPT_VERSION}`")
-=======
-st.sidebar.caption(f"Prompt Engine: `{PROMPT_VERSION}`")
->>>>>>> 01fa15e55195e3bfb80ed6ad6a2e0f7bac028f5b
