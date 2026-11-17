@@ -311,20 +311,25 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                     st.warning(f"⚠️ AI Prospector temporarily unavailable ({e}). Showing top TMDB matches instead.")
 
         if items:
-            st.success(f"💎 Strike! Unearthed {len(items)} {media_type.lower()} from the quarry:")
+            st.success(f"💎 Strike! Unearthed top {min(len(items), 6)} curated {media_type.lower()} (movies & episodes):")
 
-            for item in items[:10]:
+            # Slice to display up to 6 top-matching gems/episodes
+            for item in items[:6]:
                 st.markdown('<div class="gem-card">', unsafe_allow_html=True)
                 col1, col2 = st.columns([1, 3])
 
-                poster_path = item.get("poster_path")
+                poster_path = item.get("poster_path") or item.get("parent_show", {}).get("poster_path")
                 poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
 
                 title = item.get("title") or item.get("name", "Unknown Title")
-                date_key = "release_date" if endpoint == "movie" else "first_air_date"
-                date_val = item.get(date_key, 'N/A')
-                release_year = date_val.split("-")[0] if date_val != 'N/A' else ""
-                tmdb_rating = item.get('vote_average', 5.0)
+                
+                # Handle release date display for movies vs. TV episodes
+                date_val = item.get("release_date") or item.get("first_air_date") or 'N/A'
+                if not date_val or date_val == 'N/A':
+                    date_val = item.get("parent_show", {}).get("first_air_date", "N/A")
+                    
+                release_year = str(date_val).split("-")[0] if date_val != 'N/A' else ""
+                tmdb_rating = item.get('vote_average') or item.get('parent_show', {}).get('vote_average', 5.0)
 
                 # Fetch cross-database ratings from OMDb API
                 omdb_rating = "N/A"
@@ -332,7 +337,9 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                 metacritic = "N/A"
 
                 try:
-                    omdb_url = f"http://www.omdbapi.com/?apikey={omdb_api_key}&t={requests.utils.quote(title)}"
+                    # Clean title for OMDb query (strip out episode subtitle if present)
+                    clean_title = title.split(" - S")[0] if " - S" in title else title
+                    omdb_url = f"http://www.omdbapi.com/?apikey={omdb_api_key}&t={requests.utils.quote(clean_title)}"
                     if release_year:
                         omdb_url += f"&y={release_year}"
                     omdb_res = requests.get(omdb_url).json()
@@ -363,12 +370,12 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
 
                 with col2:
                     st.subheader(f"💎 {title}")
-                    st.write(f"**Unearthed (Release / Air Date):** {date_val}")
+                    st.write(f"**Unearthed (Aired):** {date_val}")
                     st.write(f"**Appraisal:** TMDB: `{tmdb_rating}/10` | IMDb: `{omdb_rating}` | Rotten Tomatoes: `{rt_rating}` | Metacritic: `{metacritic}`")
                     st.write(f"**Purity & Cheese:** `{cheesiness_score}/10` — {cheese_badge}")
 
                     # Display Gemini Prospector's Note if available
-                    note = prospector_notes.get(item.get('id'))
+                    note = prospector_notes.get(str(item.get('id')))
                     if note:
                         st.markdown(f"**⛏️ Prospector's Note:** *\"{note}\"*")
 
