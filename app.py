@@ -281,28 +281,34 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                     prompt = build_curation_prompt(combined_mood, movies_snippet)
                     ai_res = gemini_client.models.generate_content(
                         model='gemini-3.8-flash',
-                        contents=prompt
+                        contents=prompt,
+                        config={"response_mime_type": "application/json"}
                     )
-                    raw_text = ai_res.text.strip()
-                    if raw_text.startswith("```"):
-                        raw_text = raw_text.split("```")[1]
-                        if raw_text.startswith("json"):
-                            raw_text = raw_text[4:].strip()
+                    parsed_data = json.loads(ai_res.text.strip())
+                    
+                    # Handle either a direct list [...] or a wrapped dict {"results": [...]}
+                    if isinstance(parsed_data, dict):
+                        for val in parsed_data.values():
+                            if isinstance(val, list):
+                                parsed_data = val
+                                break
 
-                    parsed_data = json.loads(raw_text)
                     valid_ids = []
                     for entry in parsed_data:
                         item_id = entry.get("id")
                         note_text = entry.get("note")
-                        if item_id and note_text:
-                            valid_ids.append(item_id)
-                            prospector_notes[item_id] = note_text
+                        if item_id is not None and note_text:
+                            clean_id = int(item_id)
+                            valid_ids.append(clean_id)
+                            prospector_notes[clean_id] = note_text
 
-                    curated_items = [item for vid in valid_ids for item in items if item.get('id') == vid]
+                    curated_items = [item for vid in valid_ids for item in items if int(item.get('id')) == vid]
                     if curated_items:
                         items = curated_items
-                except Exception:
-                    pass
+                    else:
+                        st.warning("⚠️ AI evaluated the candidates, but none closely matched your specific mood prompt.")
+                except Exception as e:
+                    st.warning(f"⚠️ AI Prospector temporarily unavailable ({e}). Showing top TMDB matches instead.")
 
         if items:
             st.success(f"💎 Strike! Unearthed {len(items)} {media_type.lower()} from the quarry:")
