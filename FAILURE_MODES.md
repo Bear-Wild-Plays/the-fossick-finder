@@ -1,10 +1,55 @@
-# Failure Mode Taxonomy & Mitigation Log
+# 🛡️ Failure Modes & Mitigations Log
 
-During development and rubric testing of **The Fossick Finder**, user queries were audited against our golden evaluation suite (`evals/golden_set.json`) to identify systematic LLM failure modes. Below is the taxonomy of recurring defects and the prompt-engineering mitigations implemented to resolve them.
+This document tracks real retrieval, prompt, and state-management failure modes identified during development and evaluation of **The Fossick Finder**, along with the architectural mitigations implemented to resolve them.
 
-| ID | Failure Category | Symptom Observed | Root Cause | Mitigation & Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **FM-01** | **Literal Keyword Over-Indexing** | Querying *"cozy 90s mystery that isn't too dark"* returned bleak psychological thrillers (*Se7en*) because the overview contained the words "detective" and "mystery." | Model weighted lexical overlap higher than emotional subtext, atmosphere, and pacing cues. | **Resolved (`v1.2`):** Added explicit thematic-alignment instructions in `SYSTEM_RUBRIC_PROMPT` prioritizing emotional subtext over keyword overlap. |
-| **FM-02** | **Catalog Hallucination** | When TMDB candidate pools were narrow (<5 items), Gemini injected famous titles outside the retrieved list (e.g., *Star Wars*), breaking poster and OMDb rating lookups. | Model defaulted to pre-training parametric memory to satisfy the "return up to 6 titles" instruction. | **Resolved (`v1.4`):** Added strict grounding constraints (*"ONLY select titles explicitly present in the candidate list"*) + automated ID validation in `evals/run_eval.py`. |
-| **FM-03** | **Persona Drift & Verbosity** | Editorial notes ballooned to 3–4 sentences of generic plot summary (*"This 1984 film is a great choice because..."*), cluttering UI cards, while overly tight 25-word limits clipped vivid western metaphors. | Lack of structural length bounds and few-shot voice calibration. | **Resolved (`v2.1`):** Calibrated a hard **35-word ceiling** per note, banned generic filler openings, and added an LLM-as-a-Judge voice check (`judge_editorial_voice`). |
-| **FM-04** | **Negative Constraint Failure** | Queries with exclusions (e.g., *"80s sci-fi adventure, nothing depressing or post-apocalyptic"*) still surfaced dystopian wasteland titles (*The Road Warrior*). | Attention dilution when parsing multi-clause user exclusions alongside dense candidate overviews. | **Resolved (`v2.1`):** Added dedicated negative-constraint benchmark cases (`TC-002`) to `golden_set.json` and elevated exclusion compliance in the rubric hierarchy. |
+---
+
+## 1. Zero-Result Over-Filtering ("Filter Collapse")
+
+* **Failure Mode:** Combining strict TMDB metadata filters (e.g., `1970s` + `Sci-Fi` + `Black & White` + `Keyword`) frequently returned `0` candidates from `/discover`, resulting in empty screens even when adjacent titles existed.
+* **Root Cause:** Boolean `AND` filtering on sparse metadata fields creates brittle intersection boundaries.
+* **Mitigation:** Implemented **3-Tier Cascading Retrieval** (`fetch_cascading_candidates`):
+  * **Tier 1:** Queries TMDB with all user-selected constraints.
+  * **Tier 2:** If fewer than 6 candidates return, automatically drops the decade boundary while preserving genre and aesthetic filters.
+  * **Tier 3:** Falls back to broad genre/popularity recall if Tier 2 remains sparse.
+  * Displays an explicit `st.info` *"Prospector's Detour"* banner whenever fallback relaxation triggers so search behavior remains transparent.
+
+---
+
+## 2. Show-Level vs. Episode-Level Mismatch in TV Discovery
+
+* **Failure Mode:** When users searched TV shows for specific narrative tropes (e.g., *"A bottle episode trapped in one room"* or *"A musical episode"*), TMDB's series-level `overview` lacked episode-specific plot details, causing Gemini to miss obvious matches.
+* **Root Cause:** Series overviews summarize multi-season premises rather than individual episode arcs.
+* **Mitigation:** Built a **Cross-API Episode Expansion Stage** using the **TVmaze API** (`fetch_tvmaze_episode_candidates`):
+  * Takes the top 5 TMDB series candidates, queries TVmaze for episode-level summaries, strips HTML markup, and constructs composite candidate IDs (`{tmdb_id}_ep_{tvmaze_ep_id}`).
+  * Feeds up to 25 granular episode synopses into Gemini's reranking prompt while preserving parent show poster art and ratings for display.
+
+---
+
+## 3. LLM Candidate Hallucination & ID Drift
+
+* **Failure Mode:** Early prompt iterations occasionally hallucinated movie titles not present in the TMDB candidate pool or returned malformed JSON wrapped in Markdown fences (` ```json `).
+* **Root Cause:** Unconstrained text generation without strict schema enforcement or grounded ID verification.
+* **Mitigation:**
+  * Enforced `response_mime_type="application/json"` via the Google GenAI SDK.
+  * Instructed Gemini in `prompts/prospector_prompts.py` to return exact candidate IDs (`id`), integer scores (`1–10`), and single-sentence editorial justifications (`note`).
+  * Added deterministic post-processing in `app.py` that filters AI outputs strictly against the in-memory candidate ID map—dropping any ungrounded IDs silently.
+
+---
+
+## 4. Redundant API Calls & Free-Tier Quota Exhaustion on Pagination
+
+* **Failure Mode:** Re-running the full TMDB + TVmaze + Gemini pipeline every time a user clicked *"Dig for Gems!"* or wanted to view more than the top 6 results exhausted daily free-tier Gemini rate limits (`429 RESOURCE_EXHAUSTED`) and introduced unnecessary latency.
+* **Root Cause:** Stateless Streamlit reruns re-executed API calls on every button interaction.
+* **Mitigation:**
+  * Implemented **`st.session_state` Candidate Caching & Pagination** (`unearthed_items`, `display_count`, `last_search_params`).
+  * Clicking **"⛏️ Dig Deeper (Load 6 More Gems)"** slices the next 6 items directly from the cached ranked pool (`curated_items + remaining_items`) with **zero additional API calls**.
+  * Wrapped Gemini generation in a `try/except` block that gracefully degrades to TMDB's native ranking with a non-blocking `st.warning` banner if API quotas are reached.
+
+---
+
+## 5. Missing Cross-Database Ratings for Episode Results
+
+* **Failure Mode:** Querying OMDb with a composite episode title (e.g., `"The Twilight Zone - S1E22: The Monsters Are Due on Maple Street"`) caused OMDb lookups to return `Response: False`, displaying `N/A` for IMDb, Rotten Tomatoes, and Metacritic scores.
+* **Root Cause:** OMDb title search expects the root series name rather than concatenated season/episode strings.
+* **Mitigation:** Normalized title extraction prior to OMDb lookup (`title.split(" - S")[0]`) so episode cards inherit accurate parent-series ratings across all three review aggregators.
