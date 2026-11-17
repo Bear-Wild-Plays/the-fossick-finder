@@ -196,60 +196,89 @@ exclude_animation = st.sidebar.toggle("Filter out Cartoons / Animation", value=F
 black_and_white = st.sidebar.toggle("Classic Black & White Only", value=False)
 blurb_keyword = st.sidebar.text_input("Sift plot blurbs for a word", "", placeholder="e.g. gold, space, island")
 
+# Helper: Cascading Retrieval to Prevent Zero-Result Dead Ends
+def fetch_cascading_candidates(endpoint, api_key, sort_by, genre_id, decade_range, black_and_white, exclude_animation):
+    def build_url(use_genre=True, use_decade=True, use_bw=True):
+        u = f"https://api.themoviedb.org/3/discover/{endpoint}?api_key={api_key}&sort_by={sort_by}&vote_count.gte=15"
+        if use_genre and genre_id:
+            u += f"&with_genres={genre_id}"
+        if use_decade and decade_range:
+            start_date, end_date = decade_range
+            date_field = "primary_release_date" if endpoint == "movie" else "first_air_date"
+            u += f"&{date_field}.gte={start_date}&{date_field}.lte={end_date}"
+        if use_bw and black_and_white:
+            u += "&with_keywords=10183"
+        if exclude_animation and genre_id != 16:
+            u += "&without_genres=16"
+        return u
+
+    # Tier 1: Strict Decade + Genre
+    res = requests.get(build_url(use_genre=True, use_decade=True, use_bw=True))
+    if res.status_code != 200:
+        return None, "error"
+    results = res.json().get("results", [])
+    fallback_note = None
+
+    # Tier 2: Relax Genre if too few results (keep Decade locked)
+    if len(results) < 5 and genre_id:
+        res = requests.get(build_url(use_genre=False, use_decade=True, use_bw=True))
+        if res.status_code == 200 and res.json().get("results"):
+            results = res.json().get("results", [])
+            fallback_note = f"Broadened beyond **{selected_genre_name}** within the **{selected_decade_name}** to keep your pan full."
+
+    # Tier 3: Open Quarry (relax Decade & B&W if still under 3 results)
+    if len(results) < 3:
+        res = requests.get(build_url(use_genre=False, use_decade=False, use_bw=False))
+        if res.status_code == 200 and res.json().get("results"):
+            results = res.json().get("results", [])
+            fallback_note = "Expanded search across all eras to guarantee fresh gems."
+
+    return results, fallback_note
+
+
 # 4. Discover Button Trigger
 if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
     genre_id = genre_dict[selected_genre_name]
     vibe_data = VIBES[selected_vibe_name]
     decade_range = DECADES[selected_decade_name]
-    
     sort_by = vibe_data["sort"] if vibe_data else "popularity.desc"
-    
-    url = f"https://api.themoviedb.org/3/discover/{endpoint}?api_key={api_key}&sort_by={sort_by}"
-    
-    if genre_id:
-        url += f"&with_genres={genre_id}"
-        
-    # Apply Decade / Date Range Filter
-    if decade_range:
-        start_date, end_date = decade_range
-        if endpoint == "movie":
-            url += f"&primary_release_date.gte={start_date}&primary_release_date.lte={end_date}"
-        else:
-            url += f"&first_air_date.gte={start_date}&first_air_date.lte={end_date}"
-        
-    keyword_list = []
-    if vibe_data and vibe_data["keyword"]:
-        keyword_list.append(vibe_data["keyword"])
-    if black_and_white:
-        keyword_list.append("10183")
-        
-    if keyword_list:
-        url += f"&with_keywords={'|'.join(keyword_list)}"
-        
-    if exclude_animation and genre_id != 16:
-        url += "&without_genres=16"
-        
+
     with st.spinner(f"⛏️ Digging through the dirt and gravel for {media_type.lower()}..."):
-        response = requests.get(url)
-        
-    if response.status_code == 200:
-        data = response.json()
-        items = data.get("results", [])
-        
+        items, fallback_note = fetch_cascading_candidates(
+            endpoint, api_key, sort_by, genre_id, decade_range, black_and_white, exclude_animation
+        )
+
+    if items is not None:
+        if fallback_note:
+            st.info(f"🧭 **Prospector's Detour:** {fallback_note}")
+
+        # Soft-filter plot blurb keyword (falls back to full pool if word isn't found)
         if blurb_keyword:
             keyword_lower = blurb_keyword.lower()
-            items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
-            
-        # Use Gemini Semantic Layer & Generate Prospector's Notes if user entered a mood
+            filtered_items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
+            if filtered_items:
+                items = filtered_items
+            else:
+                st.caption(f"No exact plot match for *'{blurb_keyword}'*—passing full vein to the AI Prospector to evaluate.")
+
+        # Combine dropdown Tone/Vibe + free-text Mood for Semantic Reranking
+        effective_mood_parts = []
+        if selected_vibe_name != "Any Vibe":
+            effective_mood_parts.append(f"Tone/Atmosphere: {selected_vibe_name}")
+        if user_mood.strip():
+            effective_mood_parts.append(f"Specific craving: {user_mood.strip()}")
+        combined_mood = " | ".join(effective_mood_parts)
+
+        # Stage 3: Gemini Semantic Reranking & Prospector's Notes
         prospector_notes = {}
-        if user_mood and items:
-            with st.spinner("🤖 Gemini AI Prospector is evaluating and panning for notes..."):
+        if combined_mood and items:
+            with st.spinner("🤖 Gemini AI Prospector is rating and ranking candidates..."):
                 try:
                     movies_snippet = "\n".join([
                         f"- ID: {i.get('id')} | Title: {i.get('title') or i.get('name')} | Overview: {i.get('overview')}"
-                        for i in items[:15]
+                        for i in items[:20]
                     ])
-                    prompt = build_curation_prompt(user_mood, movies_snippet)
+                    prompt = build_curation_prompt(combined_mood, movies_snippet)
                     ai_res = gemini_client.models.generate_content(
                         model='gemini-3.8-flash',
                         contents=prompt
@@ -259,7 +288,7 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                         raw_text = raw_text.split("```")[1]
                         if raw_text.startswith("json"):
                             raw_text = raw_text[4:].strip()
-                            
+
                     parsed_data = json.loads(raw_text)
                     valid_ids = []
                     for entry in parsed_data:
@@ -268,7 +297,7 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                         if item_id and note_text:
                             valid_ids.append(item_id)
                             prospector_notes[item_id] = note_text
-                            
+
                     curated_items = [item for vid in valid_ids for item in items if item.get('id') == vid]
                     if curated_items:
                         items = curated_items
@@ -277,31 +306,31 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
 
         if items:
             st.success(f"💎 Strike! Unearthed {len(items)} {media_type.lower()} from the quarry:")
-            
+
             for item in items[:10]:
                 st.markdown('<div class="gem-card">', unsafe_allow_html=True)
                 col1, col2 = st.columns([1, 3])
-                
+
                 poster_path = item.get("poster_path")
                 poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
-                
+
                 title = item.get("title") or item.get("name", "Unknown Title")
                 date_key = "release_date" if endpoint == "movie" else "first_air_date"
                 date_val = item.get(date_key, 'N/A')
                 release_year = date_val.split("-")[0] if date_val != 'N/A' else ""
                 tmdb_rating = item.get('vote_average', 5.0)
-                
+
                 # Fetch cross-database ratings from OMDb API
                 omdb_rating = "N/A"
                 rt_rating = "N/A"
                 metacritic = "N/A"
-                
+
                 try:
                     omdb_url = f"http://www.omdbapi.com/?apikey={omdb_api_key}&t={requests.utils.quote(title)}"
                     if release_year:
                         omdb_url += f"&y={release_year}"
                     omdb_res = requests.get(omdb_url).json()
-                    
+
                     if omdb_res.get("Response") == "True":
                         omdb_rating = omdb_res.get("imdbRating", "N/A")
                         metacritic = omdb_res.get("Metascore", "N/A")
@@ -310,7 +339,7 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                                 rt_rating = r.get("Value")
                 except Exception:
                     pass
-                
+
                 # Custom Cheesiness Calculation Formula
                 cheesiness_score = max(1, min(10, int((10 - tmdb_rating) * 1.2 + 2)))
                 if cheesiness_score >= 8:
@@ -319,29 +348,29 @@ if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
                     cheese_badge = "🍿 Rough Cut / Mildly Cheesy Fun"
                 else:
                     cheese_badge = "💎 Flawless Cut / Prestigious"
-                
+
                 with col1:
                     if poster_url:
                         st.image(poster_url, width=150)
                     else:
                         st.write("🪨 No poster unearthed")
-                        
+
                 with col2:
                     st.subheader(f"💎 {title}")
                     st.write(f"**Unearthed (Release / Air Date):** {date_val}")
                     st.write(f"**Appraisal:** TMDB: `{tmdb_rating}/10` | IMDb: `{omdb_rating}` | Rotten Tomatoes: `{rt_rating}` | Metacritic: `{metacritic}`")
                     st.write(f"**Purity & Cheese:** `{cheesiness_score}/10` — {cheese_badge}")
-                    
+
                     # Display Gemini Prospector's Note if available
                     note = prospector_notes.get(item.get('id'))
                     if note:
                         st.markdown(f"**⛏️ Prospector's Note:** *\"{note}\"*")
-                        
+
                     st.write(item.get("overview", "No plot inscription found."))
-                
+
                 st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those exact filters, decade, and mood. Try loosening your pickaxe!")
+            st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those filters.")
     else:
         st.error("💥 Cave-in! Failed to connect to TMDB API. Please check your connection or API key.")
 else:
