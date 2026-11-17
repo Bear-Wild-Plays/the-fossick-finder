@@ -236,156 +236,225 @@ def fetch_cascading_candidates(endpoint, api_key, sort_by, genre_id, decade_rang
     return results, fallback_note
 
 
+# Initialize Session State for Pagination & Quota Protection
+if "unearthed_items" not in st.session_state:
+    st.session_state.unearthed_items = []
+if "prospector_notes" not in st.session_state:
+    st.session_state.prospector_notes = {}
+if "display_count" not in st.session_state:
+    st.session_state.display_count = 6
+if "last_search_params" not in st.session_state:
+    st.session_state.last_search_params = None
+if "fallback_note" not in st.session_state:
+    st.session_state.fallback_note = None
+
 # 4. Discover Button Trigger
+current_params = (
+    media_type,
+    selected_genre_name,
+    selected_decade_name,
+    selected_vibe_name,
+    user_mood.strip(),
+    blurb_keyword.strip(),
+    exclude_animation,
+    black_and_white,
+)
+
 if st.sidebar.button("⛏️ Dig for Gems!", type="primary"):
-    genre_id = genre_dict[selected_genre_name]
-    vibe_data = VIBES[selected_vibe_name]
-    decade_range = DECADES[selected_decade_name]
-    sort_by = vibe_data["sort"] if vibe_data else "popularity.desc"
-
-    with st.spinner(f"⛏️ Digging through the dirt and gravel for {media_type.lower()}..."):
-        items, fallback_note = fetch_cascading_candidates(
-            endpoint, api_key, sort_by, genre_id, decade_range, black_and_white, exclude_animation
-        )
-
-    if items is not None:
-        if fallback_note:
-            st.info(f"🧭 **Prospector's Detour:** {fallback_note}")
-
-        # Soft-filter plot blurb keyword (falls back to full pool if word isn't found)
-        if blurb_keyword:
-            keyword_lower = blurb_keyword.lower()
-            filtered_items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
-            if filtered_items:
-                items = filtered_items
-            else:
-                st.caption(f"No exact plot match for *'{blurb_keyword}'*—passing full vein to the AI Prospector to evaluate.")
-
-        # Combine dropdown Tone/Vibe + free-text Mood for Semantic Reranking
-        effective_mood_parts = []
-        if selected_vibe_name != "Any Vibe":
-            effective_mood_parts.append(f"Tone/Atmosphere: {selected_vibe_name}")
-        if user_mood.strip():
-            effective_mood_parts.append(f"Specific craving: {user_mood.strip()}")
-        combined_mood = " | ".join(effective_mood_parts)
-
-        # Stage 3: Gemini Semantic Reranking & Prospector's Notes
-        prospector_notes = {}
-        if combined_mood and items:
-            with st.spinner("🤖 Gemini AI Prospector is rating and ranking candidates..."):
-                try:
-                    movies_snippet = "\n".join([
-                        f"- ID: {i.get('id')} | Title: {i.get('title') or i.get('name')} | Overview: {i.get('overview')}"
-                        for i in items[:20]
-                    ])
-                    prompt = build_curation_prompt(combined_mood, movies_snippet)
-                    ai_res = gemini_client.models.generate_content(
-                        model='gemini-3.8-flash',
-                        contents=prompt,
-                        config={"response_mime_type": "application/json"}
-                    )
-                    parsed_data = json.loads(ai_res.text.strip())
-                    
-                    # Handle either a direct list [...] or a wrapped dict {"results": [...]}
-                    if isinstance(parsed_data, dict):
-                        for val in parsed_data.values():
-                            if isinstance(val, list):
-                                parsed_data = val
-                                break
-
-                    valid_ids = []
-                    for entry in parsed_data:
-                        item_id = entry.get("id")
-                        note_text = entry.get("note")
-                        if item_id is not None and note_text:
-                            clean_id = int(item_id)
-                            valid_ids.append(clean_id)
-                            prospector_notes[clean_id] = note_text
-
-                    curated_items = [item for vid in valid_ids for item in items if int(item.get('id')) == vid]
-                    if curated_items:
-                        items = curated_items
-                    else:
-                        st.warning("⚠️ AI evaluated the candidates, but none closely matched your specific mood prompt.")
-                except Exception as e:
-                    st.warning(f"⚠️ AI Prospector temporarily unavailable ({e}). Showing top TMDB matches instead.")
-
-        if items:
-            st.success(f"💎 Strike! Unearthed top {min(len(items), 6)} curated {media_type.lower()} (movies & episodes):")
-
-            # Slice to display up to 6 top-matching gems/episodes
-            for item in items[:6]:
-                st.markdown('<div class="gem-card">', unsafe_allow_html=True)
-                col1, col2 = st.columns([1, 3])
-
-                poster_path = item.get("poster_path") or item.get("parent_show", {}).get("poster_path")
-                poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
-
-                title = item.get("title") or item.get("name", "Unknown Title")
-                
-                # Handle release date display for movies vs. TV episodes
-                date_val = item.get("release_date") or item.get("first_air_date") or 'N/A'
-                if not date_val or date_val == 'N/A':
-                    date_val = item.get("parent_show", {}).get("first_air_date", "N/A")
-                    
-                release_year = str(date_val).split("-")[0] if date_val != 'N/A' else ""
-                tmdb_rating = item.get('vote_average') or item.get('parent_show', {}).get('vote_average', 5.0)
-
-                # Fetch cross-database ratings from OMDb API
-                omdb_rating = "N/A"
-                rt_rating = "N/A"
-                metacritic = "N/A"
-
-                try:
-                    # Clean title for OMDb query (strip out episode subtitle if present)
-                    clean_title = title.split(" - S")[0] if " - S" in title else title
-                    omdb_url = f"http://www.omdbapi.com/?apikey={omdb_api_key}&t={requests.utils.quote(clean_title)}"
-                    if release_year:
-                        omdb_url += f"&y={release_year}"
-                    omdb_res = requests.get(omdb_url).json()
-
-                    if omdb_res.get("Response") == "True":
-                        omdb_rating = omdb_res.get("imdbRating", "N/A")
-                        metacritic = omdb_res.get("Metascore", "N/A")
-                        for r in omdb_res.get("Ratings", []):
-                            if r.get("Source") == "Rotten Tomatoes":
-                                rt_rating = r.get("Value")
-                except Exception:
-                    pass
-
-                # Custom Cheesiness Calculation Formula
-                cheesiness_score = max(1, min(10, int((10 - tmdb_rating) * 1.2 + 2)))
-                if cheesiness_score >= 8:
-                    cheese_badge = "🧀 Fool's Gold / Super Cheesy Cult Classic"
-                elif cheesiness_score >= 5:
-                    cheese_badge = "🍿 Rough Cut / Mildly Cheesy Fun"
-                else:
-                    cheese_badge = "💎 Flawless Cut / Prestigious"
-
-                with col1:
-                    if poster_url:
-                        st.image(poster_url, width=150)
-                    else:
-                        st.write("🪨 No poster unearthed")
-
-                with col2:
-                    st.subheader(f"💎 {title}")
-                    st.write(f"**Unearthed (Aired):** {date_val}")
-                    st.write(f"**Appraisal:** TMDB: `{tmdb_rating}/10` | IMDb: `{omdb_rating}` | Rotten Tomatoes: `{rt_rating}` | Metacritic: `{metacritic}`")
-                    st.write(f"**Purity & Cheese:** `{cheesiness_score}/10` — {cheese_badge}")
-
-                    # Display Gemini Prospector's Note if available
-                    note = prospector_notes.get(str(item.get('id')))
-                    if note:
-                        st.markdown(f"**⛏️ Prospector's Note:** *\"{note}\"*")
-
-                    st.write(item.get("overview", "No plot inscription found."))
-
-                st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those filters.")
+    # If filters haven't changed and we already have items, simply dig 6 deeper!
+    if st.session_state.last_search_params == current_params and st.session_state.unearthed_items:
+        st.session_state.display_count += 6
     else:
-        st.error("💥 Cave-in! Failed to connect to TMDB API. Please check your connection or API key.")
+        st.session_state.last_search_params = current_params
+        st.session_state.display_count = 6
+        st.session_state.prospector_notes = {}
+        st.session_state.fallback_note = None
+
+        genre_id = genre_dict[selected_genre_name]
+        vibe_data = VIBES[selected_vibe_name]
+        decade_range = DECADES[selected_decade_name]
+        sort_by = vibe_data["sort"] if vibe_data else "popularity.desc"
+
+        with st.spinner(f"⛏️ Digging through the dirt and gravel for {media_type.lower()}..."):
+            items, fallback_note = fetch_cascading_candidates(
+                endpoint, api_key, sort_by, genre_id, decade_range, black_and_white, exclude_animation
+            )
+
+        if items is not None:
+            st.session_state.fallback_note = fallback_note
+
+            # Soft-filter plot blurb keyword
+            if blurb_keyword:
+                keyword_lower = blurb_keyword.lower()
+                filtered_items = [item for item in items if keyword_lower in item.get("overview", "").lower()]
+                if filtered_items:
+                    items = filtered_items
+                else:
+                    st.caption(f"No exact plot match for *'{blurb_keyword}'*—passing full vein to the AI Prospector to evaluate.")
+
+            # Combine dropdown Tone/Vibe + free-text Mood
+            effective_mood_parts = []
+            if selected_vibe_name != "Any Vibe":
+                effective_mood_parts.append(f"Tone/Atmosphere: {selected_vibe_name}")
+            if user_mood.strip():
+                effective_mood_parts.append(f"Specific craving: {user_mood.strip()}")
+            combined_mood = " | ".join(effective_mood_parts)
+
+            # Stage 3: Unified Semantic Reranking (Movies + TV Episodes)
+            if combined_mood and items:
+                with st.spinner("🤖 Gemini AI Prospector is cross-matching blurbs and ranking candidates..."):
+                    try:
+                        candidate_snippets = []
+
+                        if endpoint == "movie":
+                            for i in items[:20]:
+                                candidate_snippets.append(
+                                    f"- ID: {i.get('id')} | Title: {i.get('title')} ({i.get('release_date', '')[:4]}) | Overview: {i.get('overview')}"
+                                )
+                        else:
+                            expanded_candidates = []
+                            for i in items[:5]:
+                                show_title = i.get('name')
+                                eps = fetch_tvmaze_episode_candidates(show_title)
+                                for ep in eps[:12]:
+                                    clean_summary = (ep.get('summary') or '').replace('<p>', '').replace('</p>', '')
+                                    expanded_candidates.append({
+                                        "id": f"{i.get('id')}_ep_{ep.get('id')}",
+                                        "title": f"{show_title} - S{ep.get('season')}E{ep.get('number')}: {ep.get('name')}",
+                                        "overview": clean_summary,
+                                        "parent_show": i
+                                    })
+                            if expanded_candidates:
+                                items = expanded_candidates
+                                for i in items[:25]:
+                                    candidate_snippets.append(
+                                        f"- ID: {i.get('id')} | Episode: {i.get('title')} | Overview: {i.get('overview')}"
+                                    )
+                            else:
+                                for i in items[:20]:
+                                    candidate_snippets.append(
+                                        f"- ID: {i.get('id')} | Title: {i.get('name')} | Overview: {i.get('overview')}"
+                                    )
+
+                        movies_snippet = "\n".join(candidate_snippets)
+                        prompt = build_curation_prompt(combined_mood, movies_snippet)
+                        ai_res = gemini_client.models.generate_content(
+                            model='gemini-3.8-flash',
+                            contents=prompt,
+                            config={"response_mime_type": "application/json"}
+                        )
+                        parsed_data = json.loads(ai_res.text.strip())
+
+                        if isinstance(parsed_data, dict):
+                            for val in parsed_data.values():
+                                if isinstance(val, list):
+                                    parsed_data = val
+                                    break
+
+                        valid_ids = []
+                        for entry in parsed_data:
+                            item_id = entry.get("id")
+                            note_text = entry.get("note")
+                            if item_id is not None and note_text:
+                                valid_ids.append(str(item_id))
+                                st.session_state.prospector_notes[str(item_id)] = note_text
+
+                        # Put AI-curated top picks first, followed by remaining candidates so "Dig Deeper" always has more
+                        curated_items = [item for vid in valid_ids for item in items if str(item.get('id')) == vid]
+                        remaining_items = [item for item in items if str(item.get('id')) not in valid_ids]
+                        if curated_items:
+                            items = curated_items + remaining_items
+                    except Exception as e:
+                        st.warning(f"⚠️ AI Prospector temporarily unavailable ({e}). Showing top TMDB matches instead.")
+
+            st.session_state.unearthed_items = items
+        else:
+            st.error("💥 Cave-in! Failed to connect to TMDB API. Please check your connection or API key.")
+
+# 5. Display Unearthed Gems from Session State
+if st.session_state.fallback_note:
+    st.info(f"🧭 **Prospector's Detour:** {st.session_state.fallback_note}")
+
+all_items = st.session_state.unearthed_items
+items_to_show = all_items[:st.session_state.display_count]
+
+if items_to_show:
+    st.success(f"💎 Strike! Showing {len(items_to_show)} of {len(all_items)} unearthed {media_type.lower()} from the quarry:")
+
+    for item in items_to_show:
+        st.markdown('<div class="gem-card">', unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 3])
+
+        poster_path = item.get("poster_path") or item.get("parent_show", {}).get("poster_path")
+        poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
+
+        title = item.get("title") or item.get("name", "Unknown Title")
+        date_val = item.get("release_date") or item.get("first_air_date") or 'N/A'
+        if not date_val or date_val == 'N/A':
+            date_val = item.get("parent_show", {}).get("first_air_date", "N/A")
+
+        release_year = str(date_val).split("-")[0] if date_val != 'N/A' else ""
+        tmdb_rating = item.get('vote_average') or item.get('parent_show', {}).get('vote_average', 5.0)
+
+        # Fetch cross-database ratings from OMDb API
+        omdb_rating = "N/A"
+        rt_rating = "N/A"
+        metacritic = "N/A"
+
+        try:
+            clean_title = title.split(" - S")[0] if " - S" in title else title
+            omdb_url = f"http://www.omdbapi.com/?apikey={omdb_api_key}&t={requests.utils.quote(clean_title)}"
+            if release_year:
+                omdb_url += f"&y={release_year}"
+            omdb_res = requests.get(omdb_url).json()
+
+            if omdb_res.get("Response") == "True":
+                omdb_rating = omdb_res.get("imdbRating", "N/A")
+                metacritic = omdb_res.get("Metascore", "N/A")
+                for r in omdb_res.get("Ratings", []):
+                    if r.get("Source") == "Rotten Tomatoes":
+                        rt_rating = r.get("Value")
+        except Exception:
+            pass
+
+        # Custom Cheesiness Calculation Formula
+        cheesiness_score = max(1, min(10, int((10 - tmdb_rating) * 1.2 + 2)))
+        if cheesiness_score >= 8:
+            cheese_badge = "🧀 Fool's Gold / Super Cheesy Cult Classic"
+        elif cheesiness_score >= 5:
+            cheese_badge = "🍿 Rough Cut / Mildly Cheesy Fun"
+        else:
+            cheese_badge = "💎 Flawless Cut / Prestigious"
+
+        with col1:
+            if poster_url:
+                st.image(poster_url, width=150)
+            else:
+                st.write("🪨 No poster unearthed")
+
+        with col2:
+            st.subheader(f"💎 {title}")
+            st.write(f"**Unearthed (Release / Air Date):** {date_val}")
+            st.write(f"**Appraisal:** TMDB: `{tmdb_rating}/10` | IMDb: `{omdb_rating}` | Rotten Tomatoes: `{rt_rating}` | Metacritic: `{metacritic}`")
+            st.write(f"**Purity & Cheese:** `{cheesiness_score}/10` — {cheese_badge}")
+
+            note = st.session_state.prospector_notes.get(str(item.get('id')))
+            if note:
+                st.markdown(f"**⛏️ Prospector's Note:** *\"{note}\"*")
+
+            st.write(item.get("overview", "No plot inscription found."))
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Bottom "Dig Deeper" Button
+    if st.session_state.display_count < len(all_items):
+        if st.button("⛏️ Dig Deeper (Load 6 More Gems)", use_container_width=True):
+            st.session_state.display_count += 6
+            st.rerun()
+    else:
+        st.caption("🪨 You've reached the bedrock of this vein! Adjust your filters on the left to dig a new tunnel.")
+elif st.session_state.last_search_params is not None:
+    st.warning(f"🪨 Nothing but gravel! No {media_type.lower()} matched those filters.")
 else:
     st.info("👈 Grab your **Prospecting Tools** on the left, choose your decade, type what you're craving, and click **⛏️ Dig for Gems!**")
 
